@@ -16,9 +16,9 @@ from xml.etree.ElementTree import (
 )
 from xml.dom import minidom
 
-parser = argparse.ArgumentParser(description='Create a Windows Installer .msi file')
-
-parser.add_argument('project', 
+# Prepare parser
+parser = argparse.ArgumentParser(description='Create a Windows Installer *.msi file')
+parser.add_argument('project',
     help='Name of the project, without file extention')
 parser.add_argument('--auto-create',
     choices=['simple', 'qt'],
@@ -31,23 +31,25 @@ parser.add_argument('--version', help='Version of the project (n.n.n)')
 parser.add_argument('--description', help='Description of the application')
 parser.add_argument('--source-dir', help='The root-directory with the files to package')
 parser.add_argument('--icon', help='Name of the icon file to use')
-parser.add_argument('--add-desktop-shortcut', help='Add a desktop shortcut', action='store_true',)
+parser.add_argument('--add-desktop-shortcut', help='Add a desktop shortcut', action='store_true')
 parser.add_argument('--license', help='The license to use. This must be a text-file in .rtf format.')
-parser.add_argument('--full-upgrade', 
+parser.add_argument('--full-upgrade',
     action='store_true',
     help='Make sure the application is reinstalled if it is previously installed')
 parser.add_argument('--wix-root', help='The location where the WiX toolset is installed')
-parser.add_argument('--wix-ui', help='WiX UI flavor to use', 
+parser.add_argument('--wix-ui', help='WiX UI flavor to use',
     choices=['WixUI_Mondo', 'WixUI_FeatureTree', 'WixUI_InstallDir', 'WixUI_Minimal', 'WixUI_Advanced'])
-parser.add_argument('--wix-banner', help='Bitmap-file (.bmp) with a banner to show in the installer')
+parser.add_argument('--wix-banner', help='Image file to be shown in the installer banner')
+parser.add_argument('--wix-dialog', help='Image file to be shown in the installer dialog')
 parser.add_argument('--merge-module',  help='Add a merge module (like a VC runtime)', action='append')
+
 args = parser.parse_args()
 if not args.project_name:
     args.project_name = args.project
 
 project_file = args.project
 wxs_file =  project_file + '.wxs'
-msi_file = project_file + '.msi' 
+msi_file = project_file + '.msi'
 wixobj_file = project_file + '.wixobj'
 json_file = project_file + '.json'
 project = {}
@@ -100,7 +102,7 @@ def get_path(spec):
         else:
             return project['program']['dir'] + '\\' + spec
     # Absolute
-    return spec    
+    return spec
 
 def get_hash(path):
     hash_md5 = hashlib.md5()
@@ -132,7 +134,7 @@ def do_add_dependencies(dep, dir, directory, component, relpath):
         for src_path in glob.iglob(current_dir + '\\' + pattern):
 
             file_name = os.path.basename(src_path)
-            
+
             if os.path.isfile(src_path):
 
                 if preserve:
@@ -179,14 +181,12 @@ def bootstrap():
     # General stuff
     project['program'] = {}
     project['merge-modules'] = args.merge_module if args.merge_module else []
-    project['manufacturer'] = args.manufacturer if args.manufacturer else "jgaa's Fan Club!"
+    project['manufacturer'] = args.manufacturer if args.manufacturer else "VNoteX"
     project['product'] = args.project_name
     project['version'] = args.project_version if args.project_version else '1.0.0'
     project['program']['dir'] = args.source_dir if args.source_dir else os.getcwd()
     project['program']['name'] = args.project_name
-    # TODO: Try to search for an exe file if the guess is wrong
     project['program']['binary'] = args.executable if args.executable else args.project_name + '.exe'
-    # TODO: Try to search for an icon file if the guess is wrong. If not found, use the exe
     project['program']['icon'] = args.icon if args.icon else args.project_name + '.ico'
     if args.license:
         project['program']['license'] = args.license
@@ -203,12 +203,15 @@ def bootstrap():
         project['wix']['ui'] = args.wix_ui
     else:
         project['wix']['ui'] = 'WixUI_InstallDir'
-    
+
     if args.wix_root:
         project['wix']['root-folder'] = args.wix_root
 
     if args.wix_banner:
         project['program']['banner'] = args.wix_banner
+
+    if args.wix_dialog:
+        project['program']['dialog'] = args.wix_dialog
 
     # Add more specifics
     if args.auto_create == 'qt':
@@ -218,6 +221,18 @@ def bootstrap():
             'pattern': '*',
             'preserve-hierarchy': 'yes',
             'recurse': 'yes'
+        })
+        # Add QtWebEngineProcess.exe
+        project['program']['dependencies'].append({
+            'dir': '.',
+            'pattern': 'QtWebEngineProcess.exe',
+            'recurse': 'no'
+        })
+        # Add RCC files
+        project['program']['dependencies'].append({
+            'dir': '.',
+            'pattern': '*.rcc',
+            'recurse': 'no'
         })
     elif args.auto_create == 'simple':
             pass
@@ -275,7 +290,7 @@ exepath = project['program']['dir'] + '\\' + project['program']['binary']
 # TODO: Support stand-alone 32 bit binaries as well as separate features(?)
 is_64_bit = get_binary_type(exepath) == SCS_64BIT_BINARY
 
-wix_root = Element('Wix', {'xmlns' : 'http://schemas.microsoft.com/wix/2006/wi'}) 
+wix_root = Element('Wix', {'xmlns' : 'http://schemas.microsoft.com/wix/2006/wi'})
 
 wix_product = SubElement(wix_root, 'Product', {
     'Name' : project['product'],
@@ -292,7 +307,7 @@ wix_package = SubElement(wix_product, 'Package ', {
     'Manufacturer' : project['manufacturer'],
     'Keywords' : 'Installer',
     'Description' : project['product'] + ' Installer',
-    'InstallerVersion': '100',
+    'InstallerVersion': '301',
     'Languages' : project['language'],
     'Compressed' : 'yes',
     'SummaryCodepage' : project['codepage'],
@@ -346,7 +361,7 @@ if 'startmenu' in project['program']['shortcuts']:
         'Directory' : 'ProgramMenuDir',
         'Name' : project['product'],
         'WorkingDirectory' : 'INSTALLDIR',
-        'Icon' : project['program']['icon'], 
+        'Icon' : project['program']['icon'],
         'IconIndex' : '0',
         'Advertise' : 'yes'
     })
@@ -357,7 +372,7 @@ if 'desktop' in project['program']['shortcuts']:
         'Directory' : 'DesktopFolder',
         'Name' : project['product'],
         'WorkingDirectory' : 'INSTALLDIR',
-        'Icon' : project['program']['icon'], 
+        'Icon' : project['program']['icon'],
         'IconIndex' : '0',
         'Advertise' : 'yes'
     })
@@ -384,7 +399,7 @@ SubElement(wix_rf_component, 'RegistryValue', {
     'Key' : 'Software\\[Manufacturer]\\[ProductName]',
     'Type' : 'string',
     'Value' : '',
-    'KeyPath' : 'yes' 
+    'KeyPath' : 'yes'
     })
 
 SubElement(wix_product, 'Icon', {
@@ -447,6 +462,12 @@ if 'banner' in project['program']:
         'Value' : project['program']['banner']
     })
 
+if 'dialog' in project['program']:
+    SubElement(wix_product, 'WixVariable', {
+        'Id' : 'WixUIDialogBmp',
+        'Value' : project['program']['dialog']
+    })
+
 wix_upgrade = SubElement(wix_product, 'Upgrade', {
    'Id' :  project['upgrade-code']
 })
@@ -477,7 +498,8 @@ SubElement(wix_product, 'Property', {
 SubElement(wix_product, 'Property', {
     'Id' : 'WixShellExecTarget',
     # Broken!
-    #'Value' : '[#' + project['program']['binary'] + ']'
+    # 'Value' : '[#' + project['program']['binary'] + ']'
+    # Will cause warning but work fine
     'Value' : '[INSTALLDIR]\\' + project['program']['binary']
 })
 
